@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"math"
+	"image/draw"
 	"math/rand"
 	"os"
 	"time"
@@ -13,11 +13,8 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
-	"runtime"
 	"sync"
 )
-
-var numGoRoutines int
 
 var wg sync.WaitGroup
 
@@ -25,8 +22,11 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+// Results are much more interesting if GOMAXPROCS != 1.
 func main() {
-	numGoRoutines = 4
+	numGoRoutines := 2
+
+	ch := make(chan color.Color)
 
 	fmt.Println("Startup.")
 
@@ -43,20 +43,11 @@ func main() {
 
 	outImg := image.NewRGBA(b)
 
-	wg.Add(numGoRoutines)
+	wg.Add(numGoRoutines * 2)
 
 	for i := 0; i < numGoRoutines; i++ {
-		go func(index int) {
-			for y := b.Min.Y; y < b.Max.Y; y++ {
-				for x := b.Min.X; x < b.Max.X; x++ {
-					value := processColor(inImg.At(x, y), index)
-					runtime.Gosched()
-					outImg.Set(x, y, value)
-				}
-			}
-
-			wg.Done()
-		}(i)
+		go reader(ch, inImg, b)
+		go writer(ch, outImg, b)
 	}
 
 	wg.Wait()
@@ -67,14 +58,32 @@ func main() {
 	png.Encode(outFile, outImg)
 }
 
+func reader(palette chan color.Color, inImg image.Image, b image.Rectangle) {
+	defer wg.Done()
+
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			palette <- inImg.At(x, y)
+		}
+	}
+
+}
+
+func writer(palette chan color.Color, outImg image.Image, b image.Rectangle) {
+	defer wg.Done()
+
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			value := <-palette
+			outImg.(draw.Image).Set(x, y, value)
+		}
+	}
+}
+
 func processColor(c color.Color, index int) color.Color {
 	r, g, b, _ := c.RGBA()
-
-	rv := float64(r) + math.Floor(float64(index)/(float64(numGoRoutines)-1)*2-1)*64
-	rv = math.Max(0, math.Min(255, rv))
-
 	return color.RGBA{
-		uint8(rv / 255),
+		uint8(r / 255),
 		uint8(g / 255),
 		uint8(b / 255),
 		255,
