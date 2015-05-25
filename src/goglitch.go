@@ -26,7 +26,7 @@ func init() {
 func main() {
 	numGoRoutines := 2
 
-	ch := make(chan color.Color)
+	ch := make(chan uint32)
 
 	fmt.Println("Startup.")
 
@@ -58,23 +58,34 @@ func main() {
 	png.Encode(outFile, outImg)
 }
 
-func reader(palette chan color.Color, inImg image.Image, b image.Rectangle) {
+func reader(palette chan uint32, inImg image.Image, b image.Rectangle) {
 	defer wg.Done()
 
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			palette <- inImg.At(x, y)
+			r, g, b, _ := inImg.At(x, y).RGBA()
+			palette <- r
+			palette <- g
+			palette <- b
 		}
 	}
 
 }
 
-func writer(palette chan color.Color, outImg image.Image, b image.Rectangle) {
+func writer(palette chan uint32, outImg image.Image, b image.Rectangle) {
 	defer wg.Done()
 
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			value := <-palette
+			r := <-palette
+			g := <-palette
+			b := <-palette
+			value := color.RGBA{
+				uint8(r / 255),
+				uint8(g / 255),
+				uint8(b / 255),
+				255,
+			}
 			outImg.(draw.Image).Set(x, y, value)
 		}
 	}
