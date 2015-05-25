@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"math/rand"
 	"os"
 	"time"
@@ -12,13 +13,20 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
+	"sync"
 )
+
+var numGoRoutines int
+
+var wg sync.WaitGroup
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
 func main() {
+	numGoRoutines = 4
+
 	fmt.Println("Startup.")
 
 	inFile, _ := os.Open("../weyland.png")
@@ -33,17 +41,22 @@ func main() {
 	b := inImg.Bounds()
 
 	outImg := image.NewRGBA(b)
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		for x := b.Min.X; x < b.Max.X; x++ {
-			outImg.Set(x, y, processColor(inImg.At(x, y)))
-		}
+
+	wg.Add(numGoRoutines)
+
+	for i := 0; i < numGoRoutines; i++ {
+		go func(index int) {
+			for y := b.Min.Y; y < b.Max.Y; y++ {
+				for x := b.Min.X; x < b.Max.X; x++ {
+					outImg.Set(x, y, processColor(inImg.At(x, y), index))
+				}
+			}
+
+			wg.Done()
+		}(i)
 	}
 
-	// Print out some random pixel's color information.
-	var c color.Color
-	c = inImg.At((b.Max.X-b.Min.X)/2, (b.Max.Y-b.Min.Y)/2)
-	fmt.Println(c)
-	printRgba(c)
+	wg.Wait()
 
 	outFile, _ := os.Create("../output.png")
 	defer outFile.Close()
@@ -51,9 +64,14 @@ func main() {
 	png.Encode(outFile, outImg)
 }
 
-func processColor(c color.Color) color.Color {
+func processColor(c color.Color, index int) color.Color {
 	_, g, b, _ := c.RGBA()
-	return color.RGBA{255, uint8(g / 255), uint8(b / 255), 255}
+	return color.RGBA{
+		uint8(math.Floor(float64(index) / float64(numGoRoutines) * 255)),
+		uint8(g / 255),
+		uint8(b / 255),
+		255,
+	}
 }
 
 func printRgba(c color.Color) {
