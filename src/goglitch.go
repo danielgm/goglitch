@@ -13,6 +13,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
+	"runtime"
 	"sync"
 )
 
@@ -48,7 +49,9 @@ func main() {
 		go func(index int) {
 			for y := b.Min.Y; y < b.Max.Y; y++ {
 				for x := b.Min.X; x < b.Max.X; x++ {
-					outImg.Set(x, y, processColor(inImg.At(x, y), index))
+					value := processColor(inImg.At(x, y), index)
+					runtime.Gosched()
+					outImg.Set(x, y, value)
 				}
 			}
 
@@ -65,9 +68,13 @@ func main() {
 }
 
 func processColor(c color.Color, index int) color.Color {
-	_, g, b, _ := c.RGBA()
+	r, g, b, _ := c.RGBA()
+
+	rv := float64(r) + math.Floor(float64(index)/(float64(numGoRoutines)-1)*2-1)*64
+	rv = math.Max(0, math.Min(255, rv))
+
 	return color.RGBA{
-		uint8(math.Floor(float64(index) / float64(numGoRoutines) * 255)),
+		uint8(rv / 255),
 		uint8(g / 255),
 		uint8(b / 255),
 		255,
